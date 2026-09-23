@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Device to portal and back — design case</title>
+<style>
+  :root {
+    --bg:      #101418;
+    --surface: #171C22;
+    --text:    #FFFFFF;
+    --muted:   #9AA4AF;
+    --accent:  #7ED321;
+    --rule:    #2A323B;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html[data-theme="light"] {
+    --bg:      #FFFFFF;
+    --surface: #F2F4F6;
+    --text:    #101418;
+    --muted:   #5A6470;
+    --accent:  #4E8C12;
+    --rule:    #D6DCE2;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 27px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- slide frame ---- */
+  .deck { height: 100vh; overflow: hidden; }
+  section.slide {
+    display: none;
+    height: 100vh;
+    padding: 6vh 7vw 9vh;
+    overflow: hidden;
+    flex-direction: column;
+  }
+  section.slide.active { display: flex; }
+  /* during mermaid layout every slide must have real geometry, or text measures as NaN */
+  body.measuring section.slide {
+    display: flex !important;
+    visibility: hidden;
+    position: absolute;
+    inset: 0;
+  }
+
+  h1 {
+    font-size: 58px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    margin: 0 0 18px;
+  }
+  h2 {
+    font-size: 44px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.12;
+    margin: 0;
+  }
+  .rule {
+    width: 96px;
+    height: 4px;
+    background: var(--accent);
+    margin: 18px 0 30px;
+    flex: none;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 30px;
+    margin: 0 0 10px;
+    max-width: 62ch;
+  }
+
+  ul { margin: 0; padding: 0 0 0 1.1em; max-width: 62ch; }
+  li { margin: 0 0 14px; }
+  li::marker { color: var(--accent); }
+  .tight li { margin: 0 0 10px; }
+
+  ol.principles { margin: 0; padding: 0 0 0 1.4em; max-width: 64ch; counter-reset: p; }
+  ol.principles li { margin: 0 0 16px; }
+  ol.principles li::marker { color: var(--accent); font-weight: 700; }
+
+  .cols { display: flex; gap: 4vw; align-items: flex-start; flex: 1; min-height: 0; }
+  .cols > * { flex: 1; min-width: 0; }
+  .cols.wide-right > :first-child { flex: 0.85; }
+  .cols.wide-right > :last-child  { flex: 1.3; }
+
+  /* ---- id chips ---- */
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62em;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1px 7px;
+    margin-right: 10px;
+    vertical-align: 0.12em;
+    white-space: nowrap;
+  }
+  .decisions { border-top: 1px solid var(--rule); margin-top: auto; padding-top: 20px; }
+  .decisions p { margin: 0 0 10px; font-size: 22px; color: var(--muted); }
+  .decisions p:last-child { margin-bottom: 0; }
+  .decisions .chip { font-size: 16px; }
+
+  code, .formula {
+    font-family: var(--mono);
+    font-size: 0.78em;
+  }
+  .formula {
+    background: var(--surface);
+    border-left: 3px solid var(--rule);
+    padding: 14px 18px;
+    margin: 4px 0 0;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .fail { color: var(--accent); font-weight: 700; }
+
+  /* ---- diagram slides ---- */
+  .diagram {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .diagram .mermaid { width: 100%; }
+  .diagram svg { max-width: 100%; max-height: 72vh; height: auto; display: block; margin: 0 auto; }
+  .caption {
+    flex: none;
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    padding-top: 12px;
+  }
+
+  /* ---- title slide ---- */
+  section.title { justify-content: center; }
+  section.title .meta { color: var(--muted); font-size: 24px; margin-top: 28px; }
+
+  /* ---- chrome ---- */
+  .counter {
+    position: fixed;
+    right: 26px;
+    bottom: 18px;
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .time {
+    position: fixed;
+    left: 26px;
+    bottom: 18px;
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  body:not(.show-time) .time { display: none; }
+  .help {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    color: var(--text);
+    padding: 8vh 8vw;
+    font-size: 22px;
+    z-index: 10;
+  }
+  .help dl { display: grid; grid-template-columns: 8em 1fr; gap: 10px 20px; margin: 30px 0 0; }
+  .help dt { font-family: var(--mono); color: var(--accent); }
+  .help dd { margin: 0; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    body { font-size: 19px; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 26px; }
+    .lede { font-size: 21px; }
+    .cols { flex-direction: column; gap: 24px; }
+    section.slide { padding: 4vh 6vw 8vh; overflow-y: auto; }
+  }
+</style>
+</head>
+<body class="show-time">
+
+<div class="deck">
+
+  <!-- 1 ------------------------------------------------------------------->
+  <section class="slide title" data-time="0:40">
+    <h1>The case</h1>
+    <div class="rule"></div>
+    <p class="lede">Device to portal, and back. The brief's constraints.</p>
+    <ul class="tight">
+      <li>~50,000 devices, ~400 tenants — and 8,000 of them at a single site.</li>
+      <li>Firmware is another team's. 12–18 months to reach a meaningful share, never all of it.</li>
+      <li>So: many firmware versions on the wire at once, permanently.</li>
+      <li>Devices go quiet for hours or months, then reconnect with a backlog to dump.</li>
+      <li>Users still expect current state, and to act — restart, push config, open a session.</li>
+    </ul>
+  </section>
+
+  <!-- 2 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:45">
+    <h2>Disclaimers</h2>
+    <div class="rule"></div>
+    <p class="lede">Where I have interpreted the brief, and what this deliberately is not.</p>
+    <ul class="tight">
+      <li><strong>I have taken a complete design as the goal.</strong> Normally I would keep most of this high-level and deep-dive piece by piece &mdash; through consultation, exploration and spikes with the people who own each constraint.</li>
+      <li><strong>I deliver what was asked.</strong> I would not normally fix ownership and delegation up front, and I would not write a delivery plan for its own sake &mdash; only for contingency and mitigation.</li>
+      <li><strong>The design is AI-first.</strong> The initial shape is mine; from there I let it overrule me on some things and held my ground on others. Both are logged, with what each acceptance cost.</li>
+      <li><strong>The plan excludes process.</strong> No team formation, project setup or delay budget. It assumes an autonomous cross-functional team, and a shared testing framework that exists or can be enabled.</li>
+      <li><strong>The two hours were not measured as instructed.</strong> With AI in the loop, focused work is not meaningfully measurable &mdash; and time between commits is not time spent on this problem, it is usually time spent on another.</li>
+    </ul>
+  </section>
+
+  <!-- 3 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:55">
+    <h2>What I had to assume</h2>
+    <div class="rule"></div>
+    <p class="lede">The brief describes the fleet. It does not describe how a device behaves — so five assumptions carry this design.</p>
+    <ul class="tight">
+      <li><strong>No device is reachable from outside.</strong> Every exchange starts with the device &mdash; so a command is something we leave out to be collected, never a call we make.</li>
+      <li><strong>Clocks drift, and reset to epoch on power loss.</strong> So we order records by a number we stamp on arrival, and treat the device's own timestamp as display material.</li>
+      <li><strong>A device clears its flash when we answer 200.</strong> So that answer promises durability, not understanding &mdash; and our log becomes the only copy.</li>
+      <li><strong>Reconnecting devices re-send buffered records with a stable id.</strong> So de-duplication is a high-water mark rather than content hashing.</li>
+      <li><strong>Commands are a human pressing a button on one device</strong> &mdash; order 8,000 a day across 50,000 devices.</li>
+    </ul>
+    <p class="lede">That last one is why this is not a distributed-data problem. At this size, designing as though it were would be the most expensive mistake.</p>
+  </section>
+
+  <!-- 4 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:50">
+    <h2>Five principles I designed against</h2>
+    <div class="rule"></div>
+    <p class="lede">Each one names its own failure test. The weaknesses slide grades the design against them.</p>
+    <ol class="principles">
+      <li><strong>No cloud capability may require a firmware change to function.</strong> "Requires firmware ≥ X" is a failure.</li>
+      <li><strong>Firmware version is visible only to the edge parsers.</strong> One version conditional downstream is a failure.</li>
+      <li><strong>The cloud never initiates contact with a device.</strong> A cloud→device arrow that is not a response is a failure.</li>
+      <li><strong>No value reaches a user without its age.</strong> A response schema with a bare value is a failure.</li>
+      <li><strong>One tenant's burst cannot degrade another's.</strong> A shared unbounded resource on the hot path is a failure.</li>
+    </ol>
+  </section>
+
+  <!-- 5 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:55">
+    <h2>The pieces</h2>
+    <div class="rule"></div>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart LR
+  FLEET["Device fleet&lt;br/&gt;~50,000 devices"]
+  subgraph CLOUD["Cloud platform - owned by my team"]
+    GW["Sync gateway&lt;br/&gt;TLS, device auth, accept and hand back"]
+    LOG["Ingest log&lt;br/&gt;durable, per-tenant partitions"]
+    NORM["Normaliser&lt;br/&gt;versioned parsers to canonical model"]
+    REG["Device registry&lt;br/&gt;identity, tenant ownership, capabilities"]
+    STATE["State store&lt;br/&gt;latest observation plus freshness"]
+    CMD["Command service&lt;br/&gt;intents, leases, lifecycle"]
+    API["Portal API&lt;br/&gt;tenant-scoped reads and actions"]
+    UI["Portal UI"]
+    RELAY["Session relay&lt;br/&gt;interactive tunnel"]
+  end
+  FLEET --&gt;|"sync, device-initiated"| GW
+  GW --&gt;|"authenticate, resolve tenant"| REG
+  GW --&gt;|"append raw payload"| LOG
+  GW --&gt;|"claim pending intents"| CMD
+  GW --&gt;|"ack plus intents"| FLEET
+  LOG --&gt; NORM
+  NORM --&gt;|"canonical observations"| STATE
+  NORM --&gt;|"intent outcomes"| CMD
+  API --&gt; STATE
+  API --&gt; CMD
+  API --&gt; REG
+  UI --&gt; API
+  UI --&gt;|"session, browser side"| RELAY
+  FLEET --&gt;|"session, device side"| RELAY
+      </pre>
+    </div>
+    <div class="caption">DIA-OVW-002 · des-00-overview.md</div>
+  </section>
+
+  <!-- 6 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:55">
+    <h2>One connection, both directions</h2>
+    <div class="rule"></div>
+    <div class="diagram">
+      <pre class="mermaid">
+sequenceDiagram
+  actor U as Portal user
+  participant P as Portal API
+  participant C as Command service
+  participant G as Sync gateway
+  participant D as Device
+  participant S as State store
+  U-&gt;&gt;P: Restart device X
+  P-&gt;&gt;C: Create intent, return intent id
+  C--&gt;&gt;U: Accepted and queued - device last seen 14 min ago
+  D-&gt;&gt;G: Sync - auth plus buffered records
+  G-&gt;&gt;S: Normalised observations with as-of time
+  G--&gt;&gt;D: Ack plus pending intent - restart
+  D-&gt;&gt;G: Next sync - intent result plus new state
+  G-&gt;&gt;C: Outcome recorded - Executed
+  Note over U,D: One device-initiated connection carries both directions.&lt;br/&gt;Until the device syncs, the portal shows Pending, not Done.
+      </pre>
+    </div>
+    <div class="caption">DIA-OVW-003 · des-00-overview.md</div>
+  </section>
+
+  <!-- 7 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:50">
+    <h2>Ingest</h2>
+    <div class="rule"></div>
+    <ul>
+      <li>Save it, answer the device, work out what it means afterwards.</li>
+      <li>The hard part is not volume — it is 8,000 devices reconnecting at once.</li>
+      <li>A record we cannot read is set aside; the rest keep flowing.</li>
+      <li>Firmware we have never seen is read as far as we can, never refused.</li>
+      <li>Big customers get a proportional share, not an equal one.</li>
+    </ul>
+    <div class="decisions">
+      <p><span class="chip">ADR-003</span>The ack means received and durable, not understood.</p>
+      <p><span class="chip">ADR-004</span>Per-tenant log partitions for isolation, device-count-weighted admission for fairness.</p>
+      <p><span class="chip">ADR-005</span>Quarantine the poison record with its raw bytes and continue.</p>
+    </div>
+  </section>
+
+  <!-- 8 ------------------------------------------------------------------->
+  <section class="slide" data-time="1:00">
+    <h2>State and freshness</h2>
+    <div class="rule"></div>
+    <div class="cols wide-right">
+      <ul>
+        <li>We order records by arrival, because device clocks cannot be trusted.</li>
+        <li>Freshness is worked out when you look, not kept up to date by a job.</li>
+        <li>Two separate questions: is the device talking, and how old is this value?</li>
+        <li>A bad clock still measures gaps correctly, so we use it for that only.</li>
+        <li>Some ages are estimates, and we say which ones.</li>
+      </ul>
+      <div>
+        <div class="formula">expected_interval =
+    median(last 20 live inter-arrival gaps),
+    capped at 24 h
+
+stale_after =
+    last_contact_at
+    + max(2 × expected_interval, 15 min)
+
+offline_after =
+    last_contact_at
+    + max(6 × expected_interval, 45 min)</div>
+      </div>
+    </div>
+    <div class="decisions">
+      <p><span class="chip">ADR-006</span>Order per field on cloud-assigned <code>ingest_seq</code>; <code>observed_at</code> is display material only.</p>
+      <p><span class="chip">ADR-007</span>Derive the freshness class at read; materialise the <em>boundaries</em>, never the class.</p>
+      <p><span class="chip">ADR-008</span>Never-reported and gone-quiet are separate classes; class per device, age per field.</p>
+    </div>
+  </section>
+
+  <!-- 9 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:45">
+    <h2>Commands</h2>
+    <div class="rule"></div>
+    <ul>
+      <li>We record the request and watch it. We never claim the device acted.</li>
+      <li>Being offline does not block the request — it changes what we tell you.</li>
+      <li>Requests expire, so an old one cannot surprise someone months later.</li>
+      <li>"We do not know" is shown with the evidence behind it.</li>
+      <li>A remote session needs a live device, so it is not queued like the rest.</li>
+    </ul>
+    <div class="decisions">
+      <p><span class="chip">ADR-009</span>The 202 promises recorded and watchable, never that the device will act.</p>
+      <p><span class="chip">ADR-012</span>A three-rung ladder — <code>Confirmed</code>, <code>Presumed executed</code>, <code>Unknown</code> — each shown with its basis. <code>Unknown</code> is terminal.</p>
+      <p><span class="chip">ADR-010</span>TTL is wall-clock, per command type. <span class="chip">ADR-011</span>Idempotence belongs to the command type. <span class="chip">ADR-013</span>The session is a relay, not a queued command.</p>
+    </div>
+  </section>
+
+  <!-- 10 ------------------------------------------------------------------>
+  <section class="slide" data-time="0:45">
+    <h2>Every way a command can end</h2>
+    <div class="rule"></div>
+    <div class="diagram">
+      <pre class="mermaid">
+stateDiagram-v2
+  [*] --&gt; Pending : user action accepted - 202
+  Pending --&gt; Delivered : claimed onto a sync response
+  Pending --&gt; Expired : now past expires_at
+  Pending --&gt; Superseded : newer intent of the same type queued
+  Pending --&gt; Cancelled : user cancels
+  Pending --&gt; Revoked : actor access withdrawn or device re-homed
+  Delivered --&gt; Confirmed : explicit outcome for this intent id
+  Delivered --&gt; PresumedExecuted : corroborating field passes delivery ingest_seq
+  Delivered --&gt; Failed : device reports rejection
+  Delivered --&gt; Unknown : past confirm_deadline with no evidence
+      </pre>
+    </div>
+    <div class="caption">DIA-CMD-002 · des-30-commands.md — <code>Unknown</code> is terminal; a late outcome is an annotation, never a state change.<br/>Self-transition omitted for legibility: a config push is re-offered on <code>Delivered</code>, max 3 times.</div>
+  </section>
+
+  <!-- 11 ------------------------------------------------------------------>
+  <section class="slide" data-time="0:50">
+    <h2>What this design does badly</h2>
+    <div class="rule"></div>
+    <ul>
+      <li>Nine named costs. Each has someone who feels it and a trigger to rethink.</li>
+      <li>Two of my own five principles do not hold. One <span class="fail">fails</span> outright.</li>
+      <li>Some ages are estimates that can read younger than the truth.</li>
+      <li>On old firmware, "did it work?" is usually a hedge.</li>
+      <li>During our own outage, the portal blames 400 customers' fleets.</li>
+    </ul>
+    <div class="decisions">
+      <p><span class="chip">Principle 2</span><span class="fail">Fail</span> — firmware version does leak past the parsers (RSK-008). Principle 5 is a partial pass; 4 passes on the letter, not the spirit.</p>
+      <p><span class="chip">des-90</span>RSK-001…RSK-009, each with its owner, its trigger, and what I would do next.</p>
+    </div>
+  </section>
+
+  <!-- 12 ------------------------------------------------------------------>
+  <section class="slide" data-time="0:55">
+    <h2>Eight weeks</h2>
+    <div class="rule"></div>
+    <div class="cols wide-right">
+      <ul>
+        <li>Only one thing here cannot be redone later: keeping the data.</li>
+        <li>Everything else we can rebuild by replaying the log.</li>
+        <li>So we ship the whole path shallow, not one part deep.</li>
+        <li>We feed the new system from the old one, without touching devices.</li>
+        <li>Week eight proves the path works. It does not prove it scales.</li>
+      </ul>
+      <div class="diagram">
+        <pre class="mermaid">
+gantt
+  title Eight weeks to something demonstrable
+  dateFormat YYYY-MM-DD
+  axisFormat %d %b
+  section Ingest
+  Contracts and gateway skeleton :w1, 2026-09-21, 7d
+  Log partitions and dual-feed   :w2, after w1, 7d
+  Parsers and quarantine         :w3, after w2, 7d
+  section State
+  Arbitration and freshness      :w4, after w2, 14d
+  section Commands
+  Restart lifecycle and portal   :w5, after w4, 14d
+  section Prove it
+  Herd replay soak and ops       :w7, after w5, 7d
+  Pilot cutover and demo         :w8, after w7, 7d
+        </pre>
+      </div>
+    </div>
+    <div class="decisions">
+      <p><span class="chip">Ships</span>Full path, thin: gateway and log at full depth, two parsers, freshness, read-only portal, restart only, dual-feed, an ops floor.</p>
+      <p><span class="chip">Defers</span>Weighted lane split, config push, session initiation, history and trends, and cutover of all 400 tenants — each with its cost written down.</p>
+    </div>
+  </section>
+
+  <!-- 13 ------------------------------------------------------------------>
+  <section class="slide" data-time="0:45">
+    <h2>Who owns what</h2>
+    <div class="rule"></div>
+    <ul>
+      <li>Each engineer owns one area end to end, not a layer of everything.</li>
+      <li>The senior takes the part we cannot undo later.</li>
+      <li>The newest person gets the old firmware — bounded, testable, and it teaches the domain.</li>
+      <li>I keep the contracts between areas, and what the portal tells users.</li>
+      <li>Keeping the most interesting problem for myself would be the classic mistake.</li>
+    </ul>
+    <div class="decisions">
+      <p><span class="chip">DEL-010</span>The canonical observation contract. <span class="chip">DEL-011</span>The ack semantics. <span class="chip">DEL-012</span>What the portal says.</p>
+      <p><span class="chip">DEL-013</span>The firmware relationship — including refusing "just require firmware ≥ X". <span class="chip">DEL-014</span>Which weaknesses we accept.</p>
+    </div>
+  </section>
+
+  <!-- 14 ------------------------------------------------------------------>
+  <section class="slide" data-time="0:45">
+    <h2>The one firmware ask</h2>
+    <div class="rule"></div>
+    <ul>
+      <li>Anything firmware ships takes years and never reaches every device.</li>
+      <li>So the ask can never be something we are waiting on.</li>
+      <li>I ask for one thing: send back the request id we handed you.</li>
+      <li>It tells us what actually happened, instead of us guessing.</li>
+      <li>We build the guess anyway, and we keep it forever.</li>
+    </ul>
+    <div class="decisions">
+      <p><span class="chip">DEL-020</span>Echo the <code>intent_id</code> on the next sync — one opaque string, stored and returned.</p>
+      <p><span class="chip">DEL-021</span>The corroboration ladder we ship regardless. <span class="chip">DEL-022</span>Capability inferred from evidence, so a device that echoes upgrades itself silently.</p>
+      <p style="color:var(--muted)">Open questions are <code>QST-</code> rows in the docs — several addressed to you. Supporting docs: <code>docs/index.md</code>.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="counter" id="counter">1 / 14</div>
+<div class="time" id="time">0:40</div>
+
+<div class="help" id="help" hidden>
+  <h2>Keys</h2>
+  <div class="rule"></div>
+  <dl>
+    <dt>→ ↓ Space</dt><dd>next slide</dd>
+    <dt>← ↑</dt><dd>previous slide</dd>
+    <dt>Home / End</dt><dd>first / last slide</dd>
+    <dt>1 … 9, 0</dt><dd>jump to slide</dd>
+    <dt>F</dt><dd>fullscreen</dd>
+    <dt>D</dt><dd>dark / light</dd>
+    <dt>T</dt><dd>timing badges</dd>
+    <dt>?</dt><dd>this help — Esc to close</dd>
+  </dl>
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const css = getComputedStyle(document.documentElement);
+  const tok = n => css.getPropertyValue(n).trim();
+
+  const themeVariables = {
+    darkMode: true,
+    background: tok('--bg'),
+    fontFamily: tok('--font'),
+    fontSize: '15px',
+    primaryColor: tok('--surface'),
+    primaryTextColor: tok('--text'),
+    primaryBorderColor: tok('--rule'),
+    secondaryColor: tok('--surface'),
+    tertiaryColor: tok('--bg'),
+    lineColor: tok('--muted'),
+    textColor: tok('--text'),
+    mainBkg: tok('--surface'),
+    nodeBorder: tok('--rule'),
+    clusterBkg: 'transparent',
+    clusterBorder: tok('--rule'),
+    edgeLabelBackground: tok('--bg'),
+    titleColor: tok('--text'),
+    // sequence
+    actorBkg: tok('--surface'),
+    actorBorder: tok('--accent'),
+    actorTextColor: tok('--text'),
+    actorLineColor: tok('--rule'),
+    signalColor: tok('--text'),
+    signalTextColor: tok('--text'),
+    labelBoxBkgColor: tok('--surface'),
+    labelBoxBorderColor: tok('--rule'),
+    labelTextColor: tok('--text'),
+    loopTextColor: tok('--text'),
+    noteBkgColor: tok('--surface'),
+    noteBorderColor: tok('--accent'),
+    noteTextColor: tok('--muted'),
+    sequenceNumberColor: tok('--bg'),
+    // state
+    labelColor: tok('--text'),
+    transitionColor: tok('--muted'),
+    transitionLabelColor: tok('--muted'),
+    stateBkg: tok('--surface'),
+    stateLabelColor: tok('--text'),
+    altBackground: tok('--bg'),
+    compositeBackground: tok('--bg'),
+    compositeBorder: tok('--rule'),
+    innerEndBackground: tok('--accent'),
+    // gantt
+    sectionBkgColor: tok('--surface'),
+    sectionBkgColor2: tok('--bg'),
+    altSectionBkgColor: tok('--bg'),
+    taskBkgColor: tok('--accent'),
+    taskBorderColor: tok('--accent'),
+    taskTextColor: tok('--bg'),
+    taskTextDarkColor: tok('--bg'),
+    taskTextOutsideColor: tok('--text'),
+    taskTextLightColor: tok('--bg'),
+    activeTaskBkgColor: tok('--accent'),
+    activeTaskBorderColor: tok('--accent'),
+    gridColor: tok('--rule'),
+    doneTaskBkgColor: tok('--muted'),
+    doneTaskBorderColor: tok('--muted'),
+    critBkgColor: tok('--accent'),
+    critBorderColor: tok('--accent'),
+    todayLineColor: tok('--accent'),
+  };
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    securityLevel: 'loose',
+    themeVariables,
+    flowchart: { htmlLabels: true, curve: 'basis', padding: 8 },
+    sequence: { useMaxWidth: true, wrap: false },
+    gantt: { useMaxWidth: true, barHeight: 24, fontSize: 14, leftPadding: 95 },
+    state: { useMaxWidth: true, padding: 10 },
+  });
+
+  // Mermaid measures rendered text, so every slide must have real geometry while it
+  // lays out — an inactive slide is display:none and every label measures as NaN.
+  document.body.classList.add('measuring');
+  try {
+    await mermaid.run({ querySelector: '.mermaid' });
+  } finally {
+    document.body.classList.remove('measuring');
+  }
+
+  // ---- navigation -------------------------------------------------------
+  const slides = [...document.querySelectorAll('section.slide')];
+  const counter = document.getElementById('counter');
+  const timeEl = document.getElementById('time');
+  const help = document.getElementById('help');
+  let i = 0;
+
+  const show = n => {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    counter.textContent = `${i + 1} / ${slides.length}`;
+    timeEl.textContent = slides[i].dataset.time || '';
+    location.hash = i + 1;
+  };
+
+  document.addEventListener('keydown', e => {
+    if (!help.hidden && e.key !== '?' && e.key !== 'Escape') return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+        e.preventDefault(); show(i + 1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+        e.preventDefault(); show(i - 1); break;
+      case 'Home': show(0); break;
+      case 'End': show(slides.length - 1); break;
+      case 'f': case 'F':
+        document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+        break;
+      case 't': case 'T': document.body.classList.toggle('show-time'); break;
+      case 'd': case 'D': {
+        const el = document.documentElement;
+        el.dataset.theme = el.dataset.theme === 'light' ? 'dark' : 'light';
+        break;
+      }
+      case '?': help.hidden = !help.hidden; break;
+      case 'Escape': help.hidden = true; break;
+      default:
+        if (/^[0-9]$/.test(e.key)) show(e.key === '0' ? 9 : Number(e.key) - 1);
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!help.hidden) { help.hidden = true; return; }
+    show(e.clientX < window.innerWidth * 0.25 ? i - 1 : i + 1);
+  });
+
+  show(Number(location.hash.slice(1)) - 1 || 0);
+</script>
+</body>
+</html>
