@@ -247,44 +247,91 @@
   </section>
 
   <!-- 4 ------------------------------------------------------------------->
+  <section class="slide" data-time="0:30">
+    <h2>Where it sits</h2>
+    <div class="rule"></div>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart TD
+  U1(["Portal user&lt;br/&gt;[Person]&lt;br/&gt;Tenant operator"])
+  U2(["Support engineer&lt;br/&gt;[Person]&lt;br/&gt;Works across tenants"])
+  FW(["Firmware team&lt;br/&gt;[External person]&lt;br/&gt;Separate release cycle"])
+  SYS["Cloud platform&lt;br/&gt;[Software system]&lt;br/&gt;Ingest, state, commands, portal&lt;br/&gt;owned by my team"]
+  IDP["Customer identity provider&lt;br/&gt;[External system]&lt;br/&gt;SSO"]
+  FLEET["Device fleet&lt;br/&gt;[External system]&lt;br/&gt;~50,000 devices, ~400 tenants&lt;br/&gt;customer-owned"]
+  RELAY["Session relay&lt;br/&gt;[External system]&lt;br/&gt;Existing, not ours"]
+  EQ["Customer equipment&lt;br/&gt;[External system]&lt;br/&gt;PLCs and HMIs behind the device"]
+  U1 --&gt;|"views state, issues actions"| SYS
+  U2 --&gt;|"diagnoses across tenants"| SYS
+  IDP -.-&gt;|"signs in portal users"| SYS
+  FLEET --&gt;|"device starts every sync"| SYS
+  SYS -.-&gt;|"commands go back in the sync reply"| FLEET
+  FW --&gt;|"ships firmware, many versions live at once"| FLEET
+  FLEET --&gt;|"local access"| EQ
+  U1 -.-&gt;|"remote session, browser side"| RELAY
+  FLEET -.-&gt;|"connects when told to"| RELAY
+  RELAY -.-&gt;|"device connected"| SYS
+  classDef person fill:#08427B,stroke:#073B6F,color:#fff
+  classDef extPerson fill:#686868,stroke:#4D4D4D,color:#fff
+  classDef system fill:#1168BD,stroke:#0B4884,color:#fff
+  classDef extSystem fill:#999999,stroke:#8A8A8A,color:#fff
+  class U1,U2 person
+  class FW extPerson
+  class SYS system
+  class IDP,FLEET,RELAY,EQ extSystem
+      </pre>
+    </div>
+    <div class="caption">DIA-OVW-001 · des-00-overview.md · C4 colours: dark blue person, blue ours, grey not ours</div>
+  </section>
+
+  <!-- 5 ------------------------------------------------------------------->
   <section class="slide" data-time="0:40">
     <h2>The pieces</h2>
     <div class="rule"></div>
     <div class="diagram">
       <pre class="mermaid">
 flowchart LR
-  FLEET["Device fleet&lt;br/&gt;~50,000 devices"]
-  subgraph CLOUD["Cloud platform - owned by my team"]
-    GW["Sync gateway&lt;br/&gt;checks the device, stores, replies"]
-    LOG["Ingest log&lt;br/&gt;live lane and catch-up lane"]
-    NORM["Parsers&lt;br/&gt;every firmware version to one format"]
-    REG["Device registry&lt;br/&gt;identity and tenant ownership"]
-    STATE["State store&lt;br/&gt;latest value of each field, with its time"]
-    CMD["Command service&lt;br/&gt;queued commands and their outcome"]
-    API["Portal API"]
-    UI["Portal UI"]
-    RELAY["Session relay&lt;br/&gt;existing, not ours"]
+  USERS(["Portal users&lt;br/&gt;[Person]&lt;br/&gt;Tenant operators and support"])
+  FLEET["Device fleet&lt;br/&gt;[External system]&lt;br/&gt;~50,000 devices"]
+  RELAY["Session relay&lt;br/&gt;[External system]&lt;br/&gt;Existing, not ours"]
+  subgraph CLOUD["Cloud platform [Software system] - owned by my team"]
+    GW["Sync gateway&lt;br/&gt;[Container: Container Apps]&lt;br/&gt;Checks the device, stores, replies"]
+    LOG[("Ingest log&lt;br/&gt;[Container: Event Hubs]&lt;br/&gt;Live lane and catch-up lane")]
+    NORM["Parsers&lt;br/&gt;[Container: Container Apps]&lt;br/&gt;Every firmware version to one format"]
+    REG[("Device registry&lt;br/&gt;[Container: Azure SQL]&lt;br/&gt;Identity and tenant ownership")]
+    STATE[("State store&lt;br/&gt;[Container: Azure SQL]&lt;br/&gt;Latest value of each field, with its time")]
+    CMD[("Command service&lt;br/&gt;[Container: Azure SQL]&lt;br/&gt;Queued commands and their outcome")]
+    API["Portal API&lt;br/&gt;[Container: Container Apps]&lt;br/&gt;Tenant-scoped reads and actions"]
+    UI["Portal UI&lt;br/&gt;[Container: Static Web Apps]&lt;br/&gt;Runs in the browser"]
   end
+  USERS --&gt;|"views state, issues actions"| UI
   FLEET --&gt;|"sync, started by the device"| GW
   GW --&gt;|"check credential, find tenant"| REG
   GW --&gt;|"store raw payload"| LOG
   GW --&gt;|"any queued command?"| CMD
   GW --&gt;|"200 plus command, if any"| FLEET
-  LOG --&gt; NORM
+  LOG --&gt;|"raw payloads"| NORM
   NORM --&gt;|"processed records"| STATE
   CMD --&gt;|"look for evidence of the result"| STATE
-  API --&gt; STATE
-  API --&gt; CMD
-  UI --&gt; API
+  API --&gt;|"reads state and ages"| STATE
+  API --&gt;|"saves commands, reads outcome"| CMD
+  UI --&gt;|"reads and actions"| API
   UI --&gt;|"session, browser side"| RELAY
   FLEET --&gt;|"session, connects when told to"| RELAY
   RELAY --&gt;|"device connected"| CMD
+  classDef person fill:#08427B,stroke:#073B6F,color:#fff
+  classDef container fill:#438DD5,stroke:#3C7FC0,color:#fff
+  classDef extSystem fill:#999999,stroke:#8A8A8A,color:#fff
+  class USERS person
+  class GW,LOG,NORM,REG,STATE,CMD,API,UI container
+  class FLEET,RELAY extSystem
+  style CLOUD fill:none,stroke:#888888,stroke-width:2px,stroke-dasharray:6 4,color:#888888
       </pre>
     </div>
     <div class="caption">DIA-OVW-002 · des-00-overview.md</div>
   </section>
 
-  <!-- 5 ------------------------------------------------------------------->
+  <!-- 6 ------------------------------------------------------------------->
   <section class="slide" data-time="0:40">
     <h2>One connection, both directions</h2>
     <div class="rule"></div>
@@ -313,7 +360,7 @@ sequenceDiagram
     <div class="caption">DIA-OVW-003 · des-00-overview.md</div>
   </section>
 
-  <!-- 6 ------------------------------------------------------------------->
+  <!-- 7 ------------------------------------------------------------------->
   <section class="slide" data-time="0:40">
     <h2>Ingest</h2>
     <div class="rule"></div>
@@ -331,7 +378,7 @@ sequenceDiagram
     </div>
   </section>
 
-  <!-- 7 ------------------------------------------------------------------->
+  <!-- 8 ------------------------------------------------------------------->
   <section class="slide" data-time="0:45">
     <h2>State and freshness</h2>
     <div class="rule"></div>
@@ -356,7 +403,7 @@ sequenceDiagram
     </div>
   </section>
 
-  <!-- 8 ------------------------------------------------------------------->
+  <!-- 9 ------------------------------------------------------------------->
   <section class="slide" data-time="0:45">
     <h2>Commands</h2>
     <div class="rule"></div>
@@ -386,7 +433,7 @@ stateDiagram-v2
     </div>
   </section>
 
-  <!-- 9 ------------------------------------------------------------------->
+  <!-- 10 ------------------------------------------------------------------>
   <section class="slide" data-time="0:40">
     <h2>What this design does badly</h2>
     <div class="rule"></div>
@@ -402,7 +449,7 @@ stateDiagram-v2
     </div>
   </section>
 
-  <!-- 10 ------------------------------------------------------------------>
+  <!-- 11 ------------------------------------------------------------------>
   <section class="slide" data-time="0:40">
     <h2>Eight weeks</h2>
     <div class="rule"></div>
@@ -440,7 +487,7 @@ gantt
     </div>
   </section>
 
-  <!-- 11 ------------------------------------------------------------------>
+  <!-- 12 ------------------------------------------------------------------>
   <section class="slide" data-time="0:30">
     <h2>Who owns what</h2>
     <div class="rule"></div>
@@ -457,7 +504,7 @@ gantt
     </div>
   </section>
 
-  <!-- 12 ------------------------------------------------------------------>
+  <!-- 13 ------------------------------------------------------------------>
   <section class="slide" data-time="0:35">
     <h2>The one firmware ask</h2>
     <div class="rule"></div>
@@ -477,7 +524,7 @@ gantt
 
 </div>
 
-<div class="counter" id="counter">1 / 12</div>
+<div class="counter" id="counter">1 / 13</div>
 <div class="time" id="time">0:30</div>
 
 <div class="help" id="help" hidden>
